@@ -140,7 +140,12 @@ do {
     if (($null -ne $exists) -and ($exists.Lenght -ne 0) -and ($exists.SilentBusinessConfigCompleted -eq $registryKeyValue)) {
         # Start redirecting of folders
         Write-Log -Message "KeyName SilentBusinessConfigCompleted is set to 1, continue to redirecting folders." -LogLevel 2
-        Import-Module .\Set-KnownFolderPath.psm1
+        
+        # Check if module is present, if not, download from repo
+        if(!(Get-Module -Name "Set-KnownFolderPath")) {
+            Start-BitsTransfer "https://raw.githubusercontent.com/marceldekuiper/set-knownfolderpath.psm1/main/Set-KnownFolderPath.psm1"
+            Import-Module .\Set-KnownFolderPath.psm1
+        }
         Set-KnownFolderPath -KnownFolder 'Videos' -Path $env:onedrivecommercial/Videos
         Set-KnownFolderPath -KnownFolder 'Music' -Path $env:onedrivecommercial/Music
        
