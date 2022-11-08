@@ -145,8 +145,8 @@ Function Redirect-Folder {
         Set-KnownFolderPath -KnownFolder $SetFolder -Path "$SyncFolder\$Target"
 
         # Move files/folders into the redirected folder
-        Write-Log "Moving data from $SetFolder to $SyncFolder\$Target"
-        Move-File -Source $Folder -Destination "$SyncFolder\$Target" -Log "$env:ProgramData\Amsterdam UMC\Logs\Robocopy$Target.log"
+        #Write-Log "Moving data from $SetFolder to $SyncFolder\$Target"
+        #Move-File -Source $Folder -Destination "$SyncFolder\$Target" -Log "$env:ProgramData\Amsterdam UMC\Logs\Robocopy$Target.log"
 
         # Hide the source folder (rather than delete it)
         Attrib +h $Folder
@@ -333,7 +333,7 @@ do {
         $SyncFolder = Get-ItemPropertyValue -Path 'HKCU:\Software\Microsoft\OneDrive\Accounts\Business1' -Name 'UserFolder' -ErrorAction SilentlyContinue
         Write-Log "Target sync folder is $SyncFolder."
 
-        Redirect-Folder -SyncFolder $SyncFolder -GetFolder 'MyMusic' -SetFolder 'Music' -Target 'Music'
+        Redirect-Folder -SyncFolder $SyncFolder -GetFolder 'Music' -SetFolder 'Music' -Target 'Music'
         #Redirect-Folder -SyncFolder $SyncFolder -GetFolder 'Music' -SetFolder 'Music' -Target 'Music'
        
         # Exit loop
