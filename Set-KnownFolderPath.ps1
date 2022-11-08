@@ -333,7 +333,7 @@ do {
         $SyncFolder = Get-ItemPropertyValue -Path 'HKCU:\Software\Microsoft\OneDrive\Accounts\Business1' -Name 'UserFolder' -ErrorAction SilentlyContinue
         Write-Log "Target sync folder is $SyncFolder."
 
-        Redirect-Folder -SyncFolder $SyncFolder -GetFolder 'Music' -SetFolder 'Music' -Target 'Music'
+        Redirect-Folder -SyncFolder $SyncFolder -GetFolder 'MyMusic' -SetFolder 'Music' -Target 'Music'
         #Redirect-Folder -SyncFolder $SyncFolder -GetFolder 'Music' -SetFolder 'Music' -Target 'Music'
        
         # Exit loop
