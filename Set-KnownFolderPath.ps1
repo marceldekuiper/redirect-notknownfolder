@@ -1,3 +1,4 @@
+# Start declaring functions
 Function Set-KnownFolderPath {
     <#
         .SYNOPSIS
@@ -7,7 +8,7 @@ Function Set-KnownFolderPath {
         .PARAMETER Path
             The target path to redirect the folder to.
         .NOTES
-            Forked from: https://github.com/aaronparker/intune/blob/main/Folder-Redirection/Redirect-Folders.ps1
+            Partially forked from: https://github.com/aaronparker/intune/blob/main/Folder-Redirection/Redirect-Folders.ps1
     #>
     [CmdletBinding()]
     param (
@@ -92,5 +93,266 @@ public extern static int SHSetKnownFolderPath(ref Guid folderId, uint flags, Int
 
     # Fix up permissions, if we're still here
     Attrib +r $Path
-    Write-Output $Path
+    #Write-Output $Path
 }
+Function Get-KnownFolderPath {
+    <#
+        .SYNOPSIS
+            Gets a known folder's path using GetFolderPath.
+        .PARAMETER KnownFolder
+            The known folder whose path to get. Validates set to ensure only knwwn folders are passed.
+        .NOTES
+            https://stackoverflow.com/questions/16658015/how-can-i-use-powershell-to-call-shgetknownfolderpath
+    #>
+    Param (
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('AdminTools', 'ApplicationData', 'CDBurning', 'CommonAdminTools', 'CommonApplicationData', 'CommonDesktopDirectory', 'CommonDocuments', 'CommonMusic', `
+                'CommonOemLinks', 'CommonPictures', 'CommonProgramFiles', 'CommonProgramFilesX86', 'CommonPrograms', 'CommonStartMenu', 'CommonStartup', 'CommonTemplates', `
+                'CommonVideos', 'Cookies', 'Desktop', 'DesktopDirectory', 'Favorites', 'Fonts', 'History', 'InternetCache', 'LocalApplicationData', 'LocalizedResources', 'MyComputer', `
+                'MyDocuments', 'MyMusic', 'MyPictures', 'MyVideos', 'NetworkShortcuts', 'Personal', 'PrinterShortcuts', 'ProgramFiles', 'ProgramFilesX86', 'Programs', 'Recent', `
+                'Resources', 'SendTo', 'StartMenu', 'Startup', 'System', 'SystemX86', 'Templates', 'UserProfile', 'Windows')]
+        [System.String] $KnownFolder
+    )
+    [Environment]::GetFolderPath($KnownFolder)
+}
+
+Function Redirect-Folder {
+    <#
+        .SYNOPSIS
+            Function exists to reduce code required to redirect each folder.
+    #>
+    Param (
+        [Parameter(Mandatory = $true)]
+        [System.String] $SyncFolder,
+
+        [Parameter(Mandatory = $true)]
+        [System.String] $GetFolder,
+
+        [Parameter(Mandatory = $true)]
+        [System.String] $SetFolder,
+
+        [Parameter(Mandatory = $true)]
+        [System.String] $Target
+    )
+
+    # Get current Known folder path
+    $Folder = Get-KnownFolderPath -KnownFolder $GetFolder
+
+    # If paths don't match, redirect the folder
+    If ($Folder -ne "$SyncFolder\$Target") {
+        # Redirect the folder
+        Write-Log "Redirecting $SetFolder to $SyncFolder\$Target"
+        Set-KnownFolderPath -KnownFolder $SetFolder -Path "$SyncFolder\$Target"
+
+        # Move files/folders into the redirected folder
+        Write-Log "Moving data from $SetFolder to $SyncFolder\$Target"
+        Move-File -Source $Folder -Destination "$SyncFolder\$Target" -Log "$env:ProgramData\Amsterdam UMC\Logs\Robocopy$Target.log"
+
+        # Hide the source folder (rather than delete it)
+        Attrib +h $Folder
+    }
+    Else {
+        Write-Log "Folder $GetFolder matches target. Skipping redirection."
+    }
+}
+
+Function Invoke-Process {
+    <#PSScriptInfo
+        .VERSION 1.4
+        .GUID b787dc5d-8d11-45e9-aeef-5cf3a1f690de
+        .AUTHOR Adam Bertram
+        .COMPANYNAME Adam the Automator, LLC
+        .TAGS Processes
+    #>
+    <#
+    .DESCRIPTION
+        Invoke-Process is a simple wrapper function that aims to "PowerShellyify" launching typical external processes. There
+        are lots of ways to invoke processes in PowerShell with Start-Process, Invoke-Expression, & and others but none account
+        well for the various streams and exit codes that an external process returns. Also, it's hard to write good tests
+        when launching external proceses.
+
+        This function ensures any errors are sent to the error stream, standard output is sent via the Output stream and any
+        time the process returns an exit code other than 0, treat it as an error.
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param (
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [System.String] $FilePath,
+
+        [Parameter()]
+        [ValidateNotNullOrEmpty()]
+        [System.String] $ArgumentList
+    )
+    $ErrorActionPreference = 'Stop'
+
+    try {
+        $stdOutTempFile = "$env:TEMP\$((New-Guid).Guid)"
+        $stdErrTempFile = "$env:TEMP\$((New-Guid).Guid)"
+
+        $startProcessParams = @{
+            FilePath               = $FilePath
+            ArgumentList           = $ArgumentList
+            RedirectStandardError  = $stdErrTempFile
+            RedirectStandardOutput = $stdOutTempFile
+            Wait                   = $true;
+            PassThru               = $true;
+            NoNewWindow            = $true;
+        }
+        if ($PSCmdlet.ShouldProcess("Process [$($FilePath)]", "Run with args: [$($ArgumentList)]")) {
+            $cmd = Start-Process @startProcessParams
+            $cmdOutput = Get-Content -Path $stdOutTempFile -Raw
+            $cmdError = Get-Content -Path $stdErrTempFile -Raw
+            if ($cmd.ExitCode -ne 0) {
+                if ($cmdError) {
+                    throw $cmdError.Trim()
+                }
+                if ($cmdOutput) {
+                    throw $cmdOutput.Trim()
+                }
+            }
+            else {
+                if ([System.String]::IsNullOrEmpty($cmdOutput) -eq $false) {
+                    Write-Output -InputObject $cmdOutput
+                }
+            }
+        }
+    }
+    catch {
+        $PSCmdlet.ThrowTerminatingError($_)
+    }
+    finally {
+        Remove-Item -Path $stdOutTempFile, $stdErrTempFile -Force -ErrorAction Ignore
+    }
+}
+
+Function Move-File {
+    <#
+        .SYNOPSIS
+            Moves contents of a folder with output to a log.
+            Uses Robocopy to ensure data integrity and all moves are logged for auditing.
+            Means we don't need to re-write functionality in PowerShell.
+        .PARAMETER Source
+            The source folder.
+        .PARAMETER Destination
+            The destination log.
+        .PARAMETER Log
+            The log file to store progress/output
+    #>
+    Param (
+        $Source,
+        $Destination,
+        $Log
+    )
+    If (!(Test-Path (Split-Path $Log))) { New-Item -Path (Split-Path $Log) -ItemType Container }
+    Write-Verbose "Moving data in folder $Source to $Destination."
+    Robocopy.exe "$Source" "$Destination" /E /MOV /XJ /XF *.ini /R:1 /W:1 /NP /LOG+:$Log
+}
+
+Function Start-Log {
+    [CmdletBinding()]
+        param (
+        #[ValidateScript({ Split-Path $_ -Parent | Test-Path })]
+        [string]$FilePath
+        )
+        
+        try
+        {
+            if (!(Test-Path $FilePath))
+        {
+            ## Create the log file
+            New-Item $FilePath -Type File -Force | Out-Null
+        }
+            
+        ## Set the global variable to be used as the FilePath for all subsequent Write-Log
+        ## calls in this session
+        $global:ScriptLogFilePath = $FilePath
+        }
+        catch
+        {
+            Write-Error $_.Exception.Message
+        }
+}
+    
+Function Write-Log {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        
+        [Parameter()]
+        [ValidateSet(1, 2, 3)]
+        [string]$LogLevel = 1
+    )
+
+    $TimeGenerated = "$(Get-Date -Format HH:mm:ss).$((Get-Date).Millisecond)+000"
+    $Line = '<![LOG[{0}]LOG]!><time="{1}" date="{2}" component="{3}" context="" type="{4}" thread="" file="">'
+    $LineFormat = $Message, $TimeGenerated, (Get-Date -Format MM-dd-yyyy), "$($MyInvocation.ScriptName | Split-Path -Leaf):$($MyInvocation.ScriptLineNumber)", $LogLevel
+    #$LineFormat = $Message, $TimeGenerated, (Get-Date -Format MM-dd-yyyy), "$($MyInvocation.ScriptName | Split-Path -Leaf)", $LogLevel
+    $Line = $Line -f $LineFormat
+    Add-Content -Value $Line -Path $ScriptLogFilePath
+
+    if($writetoscreen -eq $true){
+        switch ($LogLevel)
+        {
+            '1'{
+                Write-Host $Message -ForegroundColor Gray
+                }
+            '2'{
+                Write-Host $Message -ForegroundColor Yellow
+                }
+            '3'{
+                Write-Host $Message -ForegroundColor Red
+                }
+            Default {}
+        }
+    }
+}
+
+$logFile = "$($env:ProgramData)\Amsterdam UMC\Logs\Redirect-FoldersToOneDrive.log"
+
+# Start logging
+Start-Log -FilePath $logFile
+
+Write-Log -Message "Started the script."
+
+# Variables for registry actions
+$registryPath = "HKCU:\Software\Microsoft\OneDrive"
+$registryKeyName = "SilentBusinessConfigCompleted"
+$registryKeyValue = "1"
+
+Write-Log -Message "Check the registry if the OneDrive sync app completed the Business config and if so, redirect folders"
+
+$Notdone = $true
+do {
+    $exists = Get-ItemProperty -Path $registryPath -Name $registryKeyName -ErrorAction SilentlyContinue
+
+    if (($null -ne $exists) -and ($exists.Lenght -ne 0) -and ($exists.SilentBusinessConfigCompleted -eq $registryKeyValue)) {
+        # Start redirecting of folders
+        Write-Log -Message "KeyName $registryKeyName is set to $registryKeyValue, continue to redirecting folders." -LogLevel 2
+        
+        $SyncFolder = Get-ItemPropertyValue -Path 'HKCU:\Software\Microsoft\OneDrive\Accounts\Business1' -Name 'UserFolder' -ErrorAction SilentlyContinue
+        Write-Log "Target sync folder is $SyncFolder."
+
+        Redirect-Folder -SyncFolder $SyncFolder -GetFolder 'Music' -SetFolder 'Music' -Target 'Music'
+        #Redirect-Folder -SyncFolder $SyncFolder -GetFolder 'Music' -SetFolder 'Music' -Target 'Music'
+       
+        # Exit loop
+        $Notdone = $false
+    }
+    else {
+        Write-Log -Message "KeyName $registryKeyName does not exist or OneDrive is not ready, sleeping for 5 seconds." -LogLevel 2
+        Start-Sleep -Seconds 5
+    }
+} while ($Notdone)
+
+Write-Log -Message "All done. Veryfying.. "
+
+if((Get-KnownFolderPath -KnownFolder Music -eq $SyncFolder\$Target)) {
+    Write-Log -Message "Music redirected."
+    Exit 0
+} else {
+    Write-Log -Message "Music redirection failed."
+    Exit 1
+}
+
+
