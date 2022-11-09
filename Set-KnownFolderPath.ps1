@@ -347,7 +347,7 @@ do {
 
 Write-Log -Message "All done. Veryfying.. "
 
-if(((Get-KnownFolderPath -KnownFolder MyMusic) -eq "$SyncFolder\$Target")) {
+if((Get-KnownFolderPath -KnownFolder MyMusic) -eq "$SyncFolder\$Target") {
     Write-Log -Message "Music redirected."
     Exit 0
 } else {
