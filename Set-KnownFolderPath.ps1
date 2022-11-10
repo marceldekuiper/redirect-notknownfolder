@@ -145,8 +145,8 @@ Function Redirect-Folder {
         Set-KnownFolderPath -KnownFolder $SetFolder -Path "$SyncFolder\$Target"
 
         # Move files/folders into the redirected folder
-        #Write-Log "Moving data from $SetFolder to $SyncFolder\$Target"
-        #Move-File -Source $Folder -Destination "$SyncFolder\$Target" -Log "$env:ProgramData\Amsterdam UMC\Logs\Robocopy$Target.log"
+        Write-Log "Moving data from $SetFolder to $SyncFolder\$Target"
+        Move-File -Source $Folder -Destination "$SyncFolder\$Target" -Log "$env:ProgramData\Amsterdam UMC\Logs\Robocopy$Target.log"
 
         # Hide the source folder (rather than delete it)
         Attrib +h $Folder
@@ -334,7 +334,7 @@ do {
         Write-Log "Target sync folder is $SyncFolder."
 
         Redirect-Folder -SyncFolder $SyncFolder -GetFolder 'MyMusic' -SetFolder 'Music' -Target 'Music'
-        #Redirect-Folder -SyncFolder $SyncFolder -GetFolder 'Music' -SetFolder 'Music' -Target 'Music'
+        Redirect-Folder -SyncFolder $SyncFolder -GetFolder 'MyVideos' -SetFolder 'Videos' -Target 'Videos'
        
         # Exit loop
         $Notdone = $false
@@ -347,12 +347,10 @@ do {
 
 Write-Log -Message "All done. Veryfying.. "
 
-if((Get-KnownFolderPath -KnownFolder MyMusic) -eq "$SyncFolder\$Target") {
-    Write-Log -Message "Music redirected."
+if((Get-KnownFolderPath -KnownFolder MyMusic) -eq "$SyncFolder\Music" -and (Get-KnownFolderPath -KnownFolder MyVideos) -eq "$SyncFolder\Videos")  {
+    Write-Log -Message "Music and Videos redirected."
     Exit 0
 } else {
-    Write-Log -Message "Music redirection failed."
+    Write-Log -Message "Music and/or Videos redirection failed."
     Exit 1
 }
-
-
