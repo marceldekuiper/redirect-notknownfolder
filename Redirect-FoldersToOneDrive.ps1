@@ -147,7 +147,7 @@ Function Redirect-Folder {
         # Move files/folders into the redirected folder
         Write-Log "Moving data from $SetFolder to $SyncFolder\$Target"
         #Move-File -Source $Folder -Destination "$SyncFolder\$Target" -Log "$env:ProgramData\Amsterdam UMC\Logs\Robocopy$Target.log"
-        Move-File -Source $Folder -Destination "$SyncFolder\$Target" -Log "$($env:ProgramData)\Microsoft\IntuneManagementExtension\Logs\Amsterdam UMC\Robocopy_$Target.log"
+        Move-File -Source $Folder -Destination "$SyncFolder\$Target" -Log "$($env:ProgramData)\Microsoft\IntuneManagementExtension\Logs\Amsterdam_UMC-Robocopy_$Target.log"
 
         # Hide the source folder (rather than delete it)
         Attrib +h $Folder
@@ -309,7 +309,7 @@ Function Write-Log {
     }
 }
 
-$logfile = "$($env:ProgramData)\Microsoft\IntuneManagementExtension\Logs\Amsterdam UMC\Redirect-FoldersToOneDrive.log"
+$logfile = "$($env:ProgramData)\Microsoft\IntuneManagementExtension\Logs\Amsterdam_UMC-Redirect-FoldersToOneDrive.log"
 
 # Start logging
 Start-Log -FilePath $logFile
